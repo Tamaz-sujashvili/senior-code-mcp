@@ -1,7 +1,7 @@
 [project]
-name = "code-context-mcp"
+name = "senior-code-mcp"
 version = "0.1.0"
-description = "MCP server for semantic + structural code search over a codebase"
+description = "Senior Code MCP — semantic + structural code search for coding agents"
 readme = "README.md"
 authors = [
     { name = "Tamaz_Sujashvili", email = "Notavailablehacker@gmail.com" }
@@ -17,8 +17,8 @@ dependencies = [
 ]
 
 [project.scripts]
-code-context-mcp = "code_context_mcp.server:main"
-code-context-ingest = "code_context_mcp.cli:main"
+senior-code-mcp = "senior_code_mcp.server:main"
+senior-code-ingest = "senior_code_mcp.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.11.19,<0.12.0"]

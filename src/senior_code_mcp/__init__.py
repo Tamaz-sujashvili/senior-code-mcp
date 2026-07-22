@@ -1,4 +1,4 @@
-"""code-context-mcp: MCP server for semantic + structural code search.
+"""Senior Code MCP: MCP server for semantic + structural code search.
 
 Lets a coding agent search a codebase two ways:
 - semantic similarity via Qdrant vector store

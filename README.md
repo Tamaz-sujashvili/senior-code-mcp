@@ -1,4 +1,4 @@
-# code-context-mcp
+# Senior Code MCP
 
 MCP server that lets a coding agent search a codebase two ways:
 
@@ -12,7 +12,7 @@ pasting whole files into context.
 ## Layout
 
 ```
-src/code_context_mcp/
+src/senior_code_mcp/
 ├── ingest/
 │   ├── parser.py   # tree-sitter parse -> AST + symbols
 │   └── chunker.py  # symbol-level chunking for embeddings
@@ -20,7 +20,7 @@ src/code_context_mcp/
 │   ├── vectors.py   # Qdrant embed + upsert + search
 │   └── graph.py     # NetworkX relationship graph + neighbor expansion
 ├── server.py        # MCP entrypoint (search_similar, search_related, ingest_repo)
-└── cli.py           # `code-context-ingest <path>`
+└── cli.py           # `senior-code-ingest <path>`
 ```
 
 ## Status
