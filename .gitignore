@@ -19,6 +19,9 @@ env/
 .env
 .env.*
 
+# Generated artifacts
+graph.json
+
 # Tooling caches
 .pytest_cache/
 .mypy_cache/

@@ -1,22 +1,27 @@
 """CLI entrypoint for ingestion.
 
 Usage:
-    code-context-ingest <path>
+    senior-code-ingest <path>
 
 Runs the full ingest pipeline on `path`: parse (tree-sitter) -> chunk ->
-embed + upsert to Qdrant -> build + persist graph. Intended to be run
-once per repo (or on update) before the agent queries it.
+embed + upsert to Qdrant -> build + persist graph.
 """
 
+from __future__ import annotations
+
 import argparse
+import json
+
+from . import pipeline
 
 
 def main(argv: list[str] | None = None) -> None:
-    """Parse args and run the ingest pipeline on the given path.
+    parser = argparse.ArgumentParser(prog="senior-code-ingest")
+    parser.add_argument("path", help="Path to the repo (or .py file) to ingest")
+    args = parser.parse_args(argv)
+    summary = pipeline.ingest_repo(args.path)
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
 
-    Stub: not implemented yet.
-    """
-    parser = argparse.ArgumentParser(prog="code-context-ingest")
-    parser.add_argument("path", help="Path to the repo to ingest")
-    parser.parse_args(argv)
-    raise NotImplementedError
+
+if __name__ == "__main__":
+    main()

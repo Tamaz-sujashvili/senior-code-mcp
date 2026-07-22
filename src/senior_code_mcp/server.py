@@ -1,21 +1,60 @@
-"""MCP server entrypoint.
+"""MCP server entrypoint (stdio transport).
 
-Exposes tools to a coding agent (e.g. Claude Code) over the MCP protocol:
+Exposes three tools to a coding agent over the MCP protocol:
 
 - `search_similar_code(query, top_k)` -> semantic search via Qdrant.
-- `search_related_code(symbol, depth)` -> structural graph expansion
-  (callers/callees/imports) around a starting symbol.
-- `ingest_repo(path)` -> run the ingest pipeline on a repo path so its
-  vectors + graph become searchable.
+  Returns vector hits with full payload + cosine score.
+- `search_related_code(names, hops)` -> structural graph expansion.
+  Loads the persisted graph and returns neighbor nodes within `hops`.
+- `ingest_repo(path)` -> run the full ingest pipeline (parse, chunk,
+  embed, upsert, build + save graph).
 
-The server wires ingest -> (vectors, graph) and serves read tools backed
-by the store modules. Run via the `code-context-mcp` console script.
+Run via the `senior-code-mcp` console script.
 """
+
+from __future__ import annotations
+
+from mcp.server.fastmcp import FastMCP
+
+from . import pipeline
+from .store import vectors
+from .store.graph import expand, load_graph
+
+mcp = FastMCP("senior-code-mcp")
+
+
+@mcp.tool()
+def search_similar_code(query: str, top_k: int = 5) -> list[dict]:
+    """Semantic search: embed `query`, return top-k matching code chunks.
+
+    Each result carries score + payload (path, name, kind, line range,
+    docstring, text).
+    """
+    return vectors.search_similar(query, top_k=top_k)
+
+
+@mcp.tool()
+def search_related_code(names: list[str], hops: int = 1) -> list[dict]:
+    """Structural search: expand the graph from `names` up to `hops` away.
+
+    Returns neighbor nodes (callers/callees/imports) with hop distance.
+    Requires the repo to have been ingested (graph.json present).
+    """
+    if not pipeline.GRAPH_PATH.exists():
+        return [{"error": f"graph not found at {pipeline.GRAPH_PATH}; run ingest_repo first"}]
+    g = load_graph(pipeline.GRAPH_PATH)
+    return expand(g, names, hops=hops)
+
+
+@mcp.tool()
+def ingest_repo(path: str) -> dict:
+    """Ingest a repo: parse, chunk, embed + upsert to Qdrant, build + save graph."""
+    return pipeline.ingest_repo(path)
 
 
 def main() -> None:
-    """Start the MCP server (stdio transport).
+    mcp.run()
 
-    Stub: not implemented yet.
-    """
-    raise NotImplementedError
+
+if __name__ == "__main__":
+    main()

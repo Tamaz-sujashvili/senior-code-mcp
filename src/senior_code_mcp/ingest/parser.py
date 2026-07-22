@@ -1,7 +1,6 @@
-"""Tree-sitter-based source parser (Python only).
+"""Source parser (Python only) using the stdlib ast module.
 
-Walks a repo, parses each `.py` file with the tree-sitter Python grammar,
-and extracts symbol-level structure:
+Walks a repo, parses each .py file, and extracts symbol-level structure:
 
 - functions, classes, methods  -> definition symbols (chunkable)
 - imports                       -> import symbols (graph only)
@@ -11,20 +10,23 @@ and extracts symbol-level structure:
 
 Every Symbol carries: name, kind, file path, start/end line (1-based),
 source text, and docstring (for definitions). Calls additionally carry
-`enclosing` (qualified name of the containing function/class/method) and
-`callee` (the called name). Imports carry `imported` (dotted names) and
-`module` (from-module, or None).
+enclosing (qualified name of the containing function/class/method) and
+callee (the called name). Imports carry imported (dotted names) and
+module (from-module, or None).
+
+Note: this originally used tree-sitter, but the tree-sitter 0.26 Node
+binding is use-after-free prone on CPython 3.13/3.14 + macOS arm64 and
+segfaulted nondeterministically mid-walk (even in a clean subprocess). We
+fall back to stdlib ast for Python, which is stable and keeps the same
+Symbol output shape so the chunker / graph / vector layers are unchanged.
 """
 
 from __future__ import annotations
 
-import ast as _ast
+import ast
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
-
-import tree_sitter_python as _tspython
-from tree_sitter import Language, Node, Parser
 
 # Directories never descended into during a repo walk.
 _SKIP_DIRS = {
@@ -50,8 +52,6 @@ _SKIP_DIRS = {
 # Kinds that produce chunkable definitions.
 _DEFINITION_KINDS = {"function", "class", "method"}
 
-_PY_LANG = Language(_tspython.language())
-
 
 @dataclass
 class Symbol:
@@ -76,175 +76,139 @@ class Symbol:
         return self.kind in _DEFINITION_KINDS
 
 
-def _new_parser() -> Parser:
-    return Parser(_PY_LANG)
-
-
-def _decode(text: bytes) -> str:
-    return text.decode("utf-8", errors="replace")
-
-
-def _string_literal(text: bytes) -> Optional[str]:
-    """Best-effort decode of a python string-literal node's text to its value."""
-    s = _decode(text)
-    try:
-        val = _ast.literal_eval(s)
-        if isinstance(val, str):
-            return val
-    except Exception:
-        pass
-    return s
-
-
-def _field_text(node: Node, field: str) -> str:
-    child = node.child_by_field_name(field)
-    return _decode(child.text) if child is not None else ""
-
-
 def _qualified(stack: list[tuple[str, str]], name: str) -> str:
     return ".".join(n for _, n in stack) + (("." + name) if stack else name)
 
 
-def _docstring(def_node: Node) -> Optional[str]:
-    """Return the docstring of a function/class definition, if present."""
-    body = def_node.child_by_field_name("body")
-    if body is None:
-        return None
-    for child in body.children:
-        if child.type == "expression_statement":
-            inner = child.children[0] if child.children else None
-            if inner is not None and inner.type == "string":
-                return _string_literal(inner.text)
-            break
-        if child.is_named and child.type != "decorator":
-            break
-    return None
-
-
-def _callee_name(call_node: Node) -> str:
-    """Extract the called name from a `call` node (identifier or attribute)."""
-    fn = call_node.child_by_field_name("function")
-    if fn is None:
+def _callee_name(node: ast.Call) -> str:
+    """Readable callee name (e.g. foo, obj.method, pkg.mod.fn)."""
+    try:
+        return ast.unparse(node.func)
+    except Exception:
         return "<call>"
-    return _decode(fn.text)
 
 
-def _import_names(node: Node) -> tuple[Optional[str], list[str]]:
-    """Return (module, imported_names) for an import node."""
-    module: Optional[str] = None
-    imported: list[str] = []
-    if node.type == "import_from_statement":
-        mod = node.child_by_field_name("module_name")
-        if mod is not None:
-            module = _decode(mod.text)
-    for child in node.children:
-        t = child.type
-        if t == "dotted_name":
-            imported.append(_decode(child.text))
-        elif t == "aliased_import":
-            inner = child.child_by_field_name("name")
-            if inner is not None:
-                imported.append(_decode(inner.text))
-        elif t == "wildcard_import":
-            imported.append("*")
-    return module, imported
+def _import_names(node: ast.Import | ast.ImportFrom) -> tuple[Optional[str], list[str]]:
+    if isinstance(node, ast.ImportFrom):
+        module = node.module
+        names = [a.name for a in node.names]
+    else:  # ast.Import
+        module = None
+        names = [a.name for a in node.names]
+    return module, names
 
 
-def _make_def(node: Node, name: str, kind: str, path: str, qualified: str) -> Symbol:
-    return Symbol(
-        name=name,
-        kind=kind,
-        path=path,
-        start_line=node.start_point.row + 1,
-        end_line=node.end_point.row + 1,
-        source=_decode(node.text),
-        docstring=_docstring(node),
-        qualified=qualified,
-    )
+def _slice_source(source_lines: list[str], start_line: int, end_line: int) -> str:
+    return "".join(source_lines[start_line - 1 : end_line])
 
 
 def _visit(
-    node: Node,
+    node: ast.AST,
     path: str,
+    source_lines: list[str],
     stack: list[tuple[str, str]],
     out: list[Symbol],
 ) -> None:
-    for child in node.children:
-        t = child.type
-
-        if t == "function_definition":
-            name = _field_text(child, "name")
+    for child in ast.iter_child_nodes(node):
+        if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            name = child.name
             kind = "method" if stack and stack[-1][0] == "class" else "function"
             q = _qualified(stack, name)
-            sym = _make_def(child, name, kind, path, q)
-            out.append(sym)
-            _visit(child, path, stack + [(kind, q)], out)
+            out.append(
+                Symbol(
+                    name=name,
+                    kind=kind,
+                    path=path,
+                    start_line=child.lineno,
+                    end_line=child.end_lineno or child.lineno,
+                    source=_slice_source(source_lines, child.lineno, child.end_lineno or child.lineno),
+                    docstring=ast.get_docstring(child),
+                    qualified=q,
+                )
+            )
+            _visit(child, path, source_lines, stack + [(kind, q)], out)
 
-        elif t == "class_definition":
-            name = _field_text(child, "name")
+        elif isinstance(child, ast.ClassDef):
+            name = child.name
             q = _qualified(stack, name)
-            sym = _make_def(child, name, "class", path, q)
-            out.append(sym)
-            _visit(child, path, stack + [("class", q)], out)
+            out.append(
+                Symbol(
+                    name=name,
+                    kind="class",
+                    path=path,
+                    start_line=child.lineno,
+                    end_line=child.end_lineno or child.lineno,
+                    source=_slice_source(source_lines, child.lineno, child.end_lineno or child.lineno),
+                    docstring=ast.get_docstring(child),
+                    qualified=q,
+                )
+            )
+            _visit(child, path, source_lines, stack + [("class", q)], out)
 
-        elif t in ("import_statement", "import_from_statement"):
+        elif isinstance(child, (ast.Import, ast.ImportFrom)):
             module, imported = _import_names(child)
             display = module or (imported[0] if imported else "<import>")
-            sym = Symbol(
-                name=display,
-                kind="import",
-                path=path,
-                start_line=child.start_point.row + 1,
-                end_line=child.end_point.row + 1,
-                source=_decode(child.text),
-                module=module,
-                imported=imported,
+            out.append(
+                Symbol(
+                    name=display,
+                    kind="import",
+                    path=path,
+                    start_line=child.lineno,
+                    end_line=child.end_lineno or child.lineno,
+                    source=_slice_source(source_lines, child.lineno, child.end_lineno or child.lineno),
+                    module=module,
+                    imported=imported,
+                )
             )
-            out.append(sym)
 
-        elif t == "call":
+        elif isinstance(child, ast.Call):
             callee = _callee_name(child)
-            sym = Symbol(
-                name=callee,
-                kind="call",
-                path=path,
-                start_line=child.start_point.row + 1,
-                end_line=child.end_point.row + 1,
-                source=_decode(child.text),
-                enclosing=stack[-1][1] if stack else None,
-                callee=callee,
+            out.append(
+                Symbol(
+                    name=callee,
+                    kind="call",
+                    path=path,
+                    start_line=child.lineno,
+                    end_line=child.end_lineno or child.lineno,
+                    source=_slice_source(source_lines, child.lineno, child.end_lineno or child.lineno),
+                    enclosing=stack[-1][1] if stack else None,
+                    callee=callee,
+                )
             )
-            out.append(sym)
-            _visit(child, path, stack, out)
+            _visit(child, path, source_lines, stack, out)
 
         else:
-            _visit(child, path, stack, out)
+            _visit(child, path, source_lines, stack, out)
 
 
 def parse_file(path: str | Path) -> list[Symbol]:
     """Parse a single Python file into a list of Symbols."""
     p = Path(path)
-    source = p.read_bytes()
-    parser = _new_parser()
-    tree = parser.parse(source)
+    source = p.read_text(encoding="utf-8", errors="replace")
+    source_lines = source.splitlines(keepends=True)
+    try:
+        tree = ast.parse(source, filename=str(p))
+    except SyntaxError:
+        return []
     out: list[Symbol] = []
-    _visit(tree.root_node, str(p), [], out)
+    _visit(tree, str(p.resolve()), source_lines, [], out)
     return out
 
 
 def parse_repo(path: str | Path) -> list[Symbol]:
-    """Walk `path` and parse every `.py` file (skipping hidden/venv/build dirs).
+    """Walk path and parse every .py file (skipping hidden/venv/build dirs).
 
     Returns a flat list of Symbols across all files.
     """
-    root = Path(path)
+    root = Path(path).resolve()
     symbols: list[Symbol] = []
     if root.is_file():
         if root.suffix == ".py":
             symbols.extend(parse_file(root))
         return symbols
     for f in sorted(root.rglob("*.py")):
-        if any(part in _SKIP_DIRS or part.startswith(".") for part in f.parts):
+        # skip hidden/venv/build dirs; ".." (parent) is allowed
+        if any(part in _SKIP_DIRS or (part.startswith(".") and part not in ("..", ".")) for part in f.parts):
             continue
         symbols.extend(parse_file(f))
     return symbols

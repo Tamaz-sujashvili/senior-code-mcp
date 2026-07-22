@@ -6,7 +6,7 @@ readme = "README.md"
 authors = [
     { name = "Tamaz_Sujashvili", email = "Notavailablehacker@gmail.com" }
 ]
-requires-python = ">=3.14"
+requires-python = ">=3.13"
 dependencies = [
     "mcp",
     "qdrant-client",
