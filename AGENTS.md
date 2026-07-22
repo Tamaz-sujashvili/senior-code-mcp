@@ -4,7 +4,7 @@ For AI coding agents. Not humans. Auto-read on repo open. This is how the org on
 
 ## 1. Prerequisites (verify before touching anything)
 
-**Call the `store_stats` MCP tool first** — it reports vector count and graph node/edge counts, telling you whether an index already exists. Use its output plus the checks below to decide what actually needs fixing before asking the org anything.
+**Call the `doctor` MCP tool first** — it self-diagnoses and returns a status report (qdrant reachable, collection exists + vector count, ollama reachable + embed model present, graph file exists + node/edge counts, plus an overall `healthy` flag). Use its output to decide what actually needs fixing before asking the org anything. `store_stats` gives a lighter count-only view if needed.
 
 - Docker daemon running: `docker info` succeeds.
 - Qdrant reachable on 6333: `curl -s http://localhost:6333/healthz` → `healthz check passed`. If down, `docker compose up -d qdrant`.
