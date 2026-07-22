@@ -181,8 +181,12 @@ def _visit(
             _visit(child, path, source_lines, stack, out)
 
 
-def parse_file(path: str | Path) -> list[Symbol]:
-    """Parse a single Python file into a list of Symbols."""
+def parse_file(path: str | Path, root: str | Path | None = None) -> list[Symbol]:
+    """Parse a single Python file into a list of Symbols.
+
+    If `root` is given, the symbol `path` is stored relative to it; otherwise
+    the absolute resolved path is used.
+    """
     p = Path(path)
     source = p.read_text(encoding="utf-8", errors="replace")
     source_lines = source.splitlines(keepends=True)
@@ -190,25 +194,33 @@ def parse_file(path: str | Path) -> list[Symbol]:
         tree = ast.parse(source, filename=str(p))
     except SyntaxError:
         return []
+    if root is not None:
+        try:
+            rel = str(Path(p).resolve().relative_to(Path(root).resolve()))
+        except ValueError:
+            rel = str(p.resolve())
+    else:
+        rel = str(p.resolve())
     out: list[Symbol] = []
-    _visit(tree, str(p.resolve()), source_lines, [], out)
+    _visit(tree, rel, source_lines, [], out)
     return out
 
 
 def parse_repo(path: str | Path) -> list[Symbol]:
     """Walk path and parse every .py file (skipping hidden/venv/build dirs).
 
-    Returns a flat list of Symbols across all files.
+    Returns a flat list of Symbols across all files, with paths stored
+    relative to the repo root.
     """
     root = Path(path).resolve()
     symbols: list[Symbol] = []
     if root.is_file():
         if root.suffix == ".py":
-            symbols.extend(parse_file(root))
+            symbols.extend(parse_file(root, root=root.parent))
         return symbols
     for f in sorted(root.rglob("*.py")):
         # skip hidden/venv/build dirs; ".." (parent) is allowed
         if any(part in _SKIP_DIRS or (part.startswith(".") and part not in ("..", ".")) for part in f.parts):
             continue
-        symbols.extend(parse_file(f))
+        symbols.extend(parse_file(f, root=root))
     return symbols

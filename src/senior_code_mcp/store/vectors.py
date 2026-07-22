@@ -126,8 +126,25 @@ def upsert_chunks(chunks: list[Chunk]) -> None:
     client.upsert(collection_name=QDRANT_COLLECTION, points=points)
 
 
+def _truncate(text: str | None, max_lines: int = 80, max_chars: int = 2000) -> str | None:
+    """Trim chunk text to the first `max_lines` lines or `max_chars` chars."""
+    if text is None:
+        return None
+    lines = text.splitlines(keepends=True)
+    truncated = "".join(lines[:max_lines])
+    if len(truncated) > max_chars:
+        truncated = truncated[:max_chars]
+    if len(lines) > max_lines or len(text) > len(truncated):
+        truncated = truncated + "\n…[truncated]"
+    return truncated
+
+
 def search_similar(query: str, top_k: int = 5) -> list[dict[str, Any]]:
-    """Embed `query` and return the top-k matching chunks with scores."""
+    """Embed `query` and return the top-k matching chunks with scores.
+
+    Chunk `text` is truncated (first 80 lines / 2000 chars) to keep responses
+    small; the full text stays in the stored payload.
+    """
     ensure_collection()
     qvec = embed_texts([query])[0]
     client = _client()
@@ -151,10 +168,18 @@ def search_similar(query: str, top_k: int = 5) -> list[dict[str, Any]]:
                 "start_line": payload.get("start_line"),
                 "end_line": payload.get("end_line"),
                 "docstring": payload.get("docstring"),
-                "text": payload.get("text"),
+                "text": _truncate(payload.get("text")),
             }
         )
     return results
+
+
+def count_vectors() -> int:
+    """Return the number of vectors stored in the collection."""
+    client = _client()
+    if not client.collection_exists(QDRANT_COLLECTION):
+        return 0
+    return client.count(collection_name=QDRANT_COLLECTION, exact=True).count
 
 
 def reset_collection() -> None:

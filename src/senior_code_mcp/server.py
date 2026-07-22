@@ -52,6 +52,23 @@ def ingest_repo(path: str) -> dict:
     return pipeline.ingest_repo(path)
 
 
+@mcp.tool()
+def store_stats() -> dict:
+    """Return store stats: vector count (Qdrant) + node/edge counts (graph)."""
+    stats: dict = {
+        "collection": vectors.QDRANT_COLLECTION,
+        "vector_count": vectors.count_vectors(),
+        "graph_path": str(pipeline.GRAPH_PATH),
+        "graph_nodes": 0,
+        "graph_edges": 0,
+    }
+    if pipeline.GRAPH_PATH.exists():
+        g = load_graph(pipeline.GRAPH_PATH)
+        stats["graph_nodes"] = g.number_of_nodes()
+        stats["graph_edges"] = g.number_of_edges()
+    return stats
+
+
 def main() -> None:
     mcp.run()
 
