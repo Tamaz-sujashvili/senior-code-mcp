@@ -68,6 +68,8 @@ class Symbol:
     # imports only:
     module: Optional[str] = None  # from-module for `from x import y`, else None
     imported: list[str] = field(default_factory=list)  # dotted names brought in
+    # definitions only: qualified name (e.g. "Class.method", "func")
+    qualified: Optional[str] = None
 
     @property
     def is_definition(self) -> bool:
@@ -148,7 +150,7 @@ def _import_names(node: Node) -> tuple[Optional[str], list[str]]:
     return module, imported
 
 
-def _make_def(node: Node, name: str, kind: str, path: str) -> Symbol:
+def _make_def(node: Node, name: str, kind: str, path: str, qualified: str) -> Symbol:
     return Symbol(
         name=name,
         kind=kind,
@@ -157,6 +159,7 @@ def _make_def(node: Node, name: str, kind: str, path: str) -> Symbol:
         end_line=node.end_point.row + 1,
         source=_decode(node.text),
         docstring=_docstring(node),
+        qualified=qualified,
     )
 
 
@@ -172,15 +175,17 @@ def _visit(
         if t == "function_definition":
             name = _field_text(child, "name")
             kind = "method" if stack and stack[-1][0] == "class" else "function"
-            sym = _make_def(child, name, kind, path)
+            q = _qualified(stack, name)
+            sym = _make_def(child, name, kind, path, q)
             out.append(sym)
-            _visit(child, path, stack + [(kind, _qualified(stack, name))], out)
+            _visit(child, path, stack + [(kind, q)], out)
 
         elif t == "class_definition":
             name = _field_text(child, "name")
-            sym = _make_def(child, name, "class", path)
+            q = _qualified(stack, name)
+            sym = _make_def(child, name, "class", path, q)
             out.append(sym)
-            _visit(child, path, stack + [("class", _qualified(stack, name))], out)
+            _visit(child, path, stack + [("class", q)], out)
 
         elif t in ("import_statement", "import_from_statement"):
             module, imported = _import_names(child)
