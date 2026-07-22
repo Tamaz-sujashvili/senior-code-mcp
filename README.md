@@ -11,16 +11,19 @@ One `search_context` call does both: vector search for the concept, then graph e
 
 ## Why this is different
 
+Most code-search tools give an agent one lens. A plain vector store returns chunks of text that look similar to the query — useful, but blind to structure: it can't tell you that the `retry` helper it just found is called by 14 services, or that it implements an interface three other modules depend on. A pure code-graph tool gives the opposite lens — relationships without semantic ranking, so you have to already know the symbol name before you can expand from it.
+
+Senior Code MCP runs both lenses on symbol-level chunks produced by a real AST parse:
+
 | | Senior Code MCP | Generic vector memory (e.g. `mcp-server-qdrant`) | Code-graph MCPs (`codegraph`, `code-graph-mcp`) |
 | --- | --- | --- | --- |
-| Semantic vector search | ✅ | ✅ | ✅ |
-| Structural call/import graph | ✅ | ❌ | ✅ |
-| Symbol-level AST chunking | ✅ Python `ast` | ❌ (raw text) | ✅ Tree-sitter, many languages |
-| Fully local, code never leaves the machine | ✅ | depends on config | ✅ |
-| One focused slice you can read end-to-end | ✅ | — | heavier, multi-language |
-| Built + demoed + explained in a single night | ✅ | — | — |
+| Semantic vector search | yes | yes | yes |
+| Call/import graph expansion | yes | no | yes |
+| Chunk granularity | AST symbols (Python `ast`) | raw text windows | AST symbols (Tree-sitter, many languages) |
+| Default deployment | local; code stays on the machine | depends on config | local |
+| Language coverage | Python | language-agnostic | 10+ languages |
 
-The difference in one line: **vectors alone find similar text; vectors + a call/import graph find the similar text *and* how it's wired into the rest of the codebase.** That's what lets an agent pull in a battle-tested `retry` helper *and* see every caller of it — instead of inventing a new one from scratch.
+The tradeoff is deliberate. The tools on the right do more; this one does less, in a slice small enough to read, run, and reason about in an evening. What that focus buys is a retrieval step that returns not just "here is similar code" but "here is similar code, and everything that calls it, imports it, or shares its shape" — the context an agent needs to reuse a proven implementation instead of writing a parallel one.
 
 ## How it works
 
