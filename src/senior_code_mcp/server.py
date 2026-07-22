@@ -1,6 +1,6 @@
 """MCP server entrypoint (stdio transport).
 
-Exposes three tools to a coding agent over the MCP protocol:
+Exposes five tools to a coding agent over the MCP protocol:
 
 - `search_similar_code(query, top_k)` -> semantic search via Qdrant.
   Returns vector hits with full payload + cosine score.
@@ -72,6 +72,31 @@ def store_stats() -> dict:
         stats["graph_nodes"] = g.number_of_nodes()
         stats["graph_edges"] = g.number_of_edges()
     return stats
+
+
+@mcp.tool()
+def search_context(query: str, top_k: int = 5, hops: int = 1) -> dict:
+    """Two-stage retrieval in one call: semantic search + graph expansion.
+
+    Runs vector search for `query` (top-k), takes the symbol names from those
+    hits, expands the graph one hop from them, and returns a combined result:
+    `similar_chunks` (the vector hits) plus `related_symbols` (graph neighbors).
+    """
+    similar = vectors.search_similar(query, top_k=top_k)
+    seed_names = list({s["name"] for s in similar if s.get("name")})
+
+    related: list[dict] = []
+    if seed_names and pipeline.GRAPH_PATH.exists():
+        g = load_graph(pipeline.GRAPH_PATH)
+        # expand returns seeds (hop 0) + neighbors; keep only the neighbors.
+        related = [r for r in expand(g, seed_names, hops=hops) if r.get("hops", 0) > 0]
+
+    return {
+        "query": query,
+        "seed_names": seed_names,
+        "similar_chunks": similar,
+        "related_symbols": related,
+    }
 
 
 def main() -> None:
