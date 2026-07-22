@@ -44,6 +44,9 @@ uv sync
 senior-code-ingest /path/to/any/python/repo
 ```
 
+Alternative: `docker compose up` brings up Qdrant + Ollama together — but on
+macOS, native Ollama is preferred (faster, uses Metal GPU) over the container.
+
 Then register in Cursor (`.cursor/mcp.json` in this repo is an example, or
 add to global `~/.cursor/mcp.json`):
 
