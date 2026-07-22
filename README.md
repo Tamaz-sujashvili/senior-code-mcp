@@ -29,11 +29,15 @@ directed graph of call and import relationships.
 | --- | --- |
 | `search_similar_code` | Embeds a natural-language or code query, returns top-k matching symbols (path, lines, docstring, truncated source, score). |
 | `search_related_code` | Given symbol names, expands N hops through the call/import graph and returns connected symbols. |
+| `search_context` | One call, two-stage retrieval: vector search for the query, then graph expansion on the top hits' symbol names. Returns one combined result (`similar_chunks` + `related_symbols`). |
 | `ingest_repo` | Runs the full pipeline on a local repo path (parse, embed, upsert, build graph). |
 | `store_stats` | Diagnostic: vector count in Qdrant, node/edge counts in the graph. |
+| `doctor` | Read-only prerequisite self-diagnosis (qdrant reachable, collection exists + vector count, ollama reachable + embed model present, graph file + node/edge counts). The onboarding agent's first call. |
 
-Typical agent flow: `search_similar_code` for a concept, then
-`search_related_code` on the hit names to pull in callers/callees.
+Typical agent flow: `doctor` first to confirm the store is healthy, then
+`search_similar_code` for a concept, then `search_related_code` on the hit
+names to pull in callers/callees — or `search_context` to get both stages in
+a single call.
 
 ## Quick start (~5 min)
 
@@ -69,7 +73,7 @@ Restart Cursor, then ask it to "call store_stats" and
 | Setting | Default | Env var |
 | --- | --- | --- |
 | Qdrant URL | `http://localhost:6333` | `QDRANT_URL` |
-| Collection | `code_chunks` | `CODE_CONTEXT_COLLECTION` |
+| Collection | `code_chunks` | `QDRANT_COLLECTION` |
 | Ollama URL | `http://localhost:11434` | `OLLAMA_URL` |
 | Embed model | `nomic-embed-text` | `EMBED_MODEL` |
 
