@@ -98,8 +98,12 @@ def ensure_collection() -> None:
     )
 
 
-def upsert_chunks(chunks: list[Chunk]) -> None:
-    """Embed + upsert a list of Chunks into Qdrant, metadata as payload."""
+def upsert_chunks(chunks: list[Chunk], repo: str | None = None) -> None:
+    """Embed + upsert a list of Chunks into Qdrant, metadata as payload.
+
+    `repo` is stored on every point so search results show which repo a
+    chunk came from.
+    """
     if not chunks:
         return
     ensure_collection()
@@ -112,6 +116,7 @@ def upsert_chunks(chunks: list[Chunk]) -> None:
             vector=vectors[i],
             payload={
                 "id": c.id,
+                "repo": repo,
                 "path": c.path,
                 "name": c.name,
                 "kind": c.kind,
@@ -162,6 +167,7 @@ def search_similar(query: str, top_k: int = 5) -> list[dict[str, Any]]:
             {
                 "score": float(h.score),
                 "id": payload.get("id"),
+                "repo": payload.get("repo"),
                 "path": payload.get("path"),
                 "name": payload.get("name"),
                 "kind": payload.get("kind"),

@@ -47,9 +47,14 @@ def search_related_code(names: list[str], hops: int = 1) -> list[dict]:
 
 
 @mcp.tool()
-def ingest_repo(path: str) -> dict:
-    """Ingest a repo: parse, chunk, embed + upsert to Qdrant, build + save graph."""
-    return pipeline.ingest_repo(path)
+def ingest_repo(path: str, reset: bool = False) -> dict:
+    """Ingest a repo: parse, chunk, embed + upsert to Qdrant, build + save graph.
+
+    Appends to the existing collection by default so multiple repos coexist;
+    pass `reset=True` to drop + recreate the collection first. Every chunk is
+    tagged with its repo name.
+    """
+    return pipeline.ingest_repo(path, reset=reset)
 
 
 @mcp.tool()
