@@ -21,6 +21,9 @@ env/
 
 # Generated artifacts
 graph.json
+data/
+*.qdrant
+storage/
 
 # Tooling caches
 .pytest_cache/

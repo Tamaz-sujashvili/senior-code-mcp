@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "senior-code-mcp": {
+      "command": "/Users/tazo/Desktop/hackathon/senior-code-mcp/.venv/bin/senior-code-mcp",
+      "args": []
+    }
+  }
+}
