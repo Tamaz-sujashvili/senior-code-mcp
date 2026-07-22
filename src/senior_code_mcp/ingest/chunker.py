@@ -1,27 +1,65 @@
 """Source chunker.
 
-Turns parsed files into embeddable chunks. Strategy: split at symbol
-boundaries (function/class/method) from the tree-sitter AST, falling back
-to a sliding character window when a symbol is too large. Each chunk keeps
-metadata: file path, symbol name, byte/line range, language.
+Takes the Symbols produced by `ingest.parser` and emits one chunk per
+definition (function / class / method). Imports and calls are NOT chunked
+-- they exist only to build graph edges.
 
-Chunks are the unit stored in Qdrant (one vector per chunk) and referenced
-by graph nodes.
+Each chunk carries the metadata the store and the agent will need later:
+id, file path, symbol name, kind, line range, source text, docstring.
 """
 
+from __future__ import annotations
 
-def chunk_file(parsed_file) -> list[dict]:
-    """Produce chunks for one parsed file.
+from dataclasses import dataclass
+from typing import Iterable
 
-    Returns list of chunk dicts: {id, path, symbol, start_line, end_line, text}.
-    Stub: not implemented yet.
-    """
-    raise NotImplementedError
+from .parser import Symbol
 
 
-def chunk_repo(parsed_files) -> list[dict]:
-    """Chunk every parsed file in the repo.
+@dataclass
+class Chunk:
+    id: str
+    path: str
+    name: str
+    kind: str  # function | class | method
+    start_line: int
+    end_line: int
+    text: str
+    docstring: str | None
 
-    Stub: not implemented yet.
-    """
-    raise NotImplementedError
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "path": self.path,
+            "name": self.name,
+            "kind": self.kind,
+            "start_line": self.start_line,
+            "end_line": self.end_line,
+            "text": self.text,
+            "docstring": self.docstring,
+        }
+
+
+def chunk_symbol(sym: Symbol) -> Chunk:
+    """Build a single Chunk from one definition Symbol."""
+    cid = f"{sym.path}:{sym.start_line}:{sym.end_line}:{sym.name}"
+    return Chunk(
+        id=cid,
+        path=sym.path,
+        name=sym.name,
+        kind=sym.kind,
+        start_line=sym.start_line,
+        end_line=sym.end_line,
+        text=sym.source,
+        docstring=sym.docstring,
+    )
+
+
+def chunk_file(symbols: Iterable[Symbol]) -> list[Chunk]:
+    """Chunk the symbols of a single file (definitions only)."""
+    return [chunk_symbol(s) for s in symbols if s.is_definition]
+
+
+def chunk_repo(symbols: Iterable[Symbol]) -> list[Chunk]:
+    """Chunk every definition symbol in a repo's symbol stream."""
+    return [chunk_symbol(s) for s in symbols if s.is_definition]
