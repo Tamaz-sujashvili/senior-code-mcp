@@ -1,0 +1,43 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Generating corpus split:   0%|          | 0/20604 [00:00<?, ? examples/s]Generating corpus split: 100%|██████████| 20604/20604 [00:00<00:00, 408284.03 examples/s]
+Generating queries split:   0%|          | 0/20604 [00:00<?, ? examples/s]Generating queries split: 100%|██████████| 20604/20604 [00:00<00:00, 3037590.14 examples/s]
+Generating train split:   0%|          | 0/19604 [00:00<?, ? examples/s]Generating train split: 100%|██████████| 19604/19604 [00:00<00:00, 2836229.71 examples/s]
+Generating test split:   0%|          | 0/500 [00:00<?, ? examples/s]Generating test split: 100%|██████████| 500/500 [00:00<00:00, 319104.08 examples/s]
+Generating valid split:   0%|          | 0/500 [00:00<?, ? examples/s]Generating valid split: 100%|██████████| 500/500 [00:00<00:00, 491251.35 examples/s]
+0it [00:00, ?it/s]20604it [00:00, 329317.28it/s]
+{
+  "cosqa": {
+    "NDCG": {
+      "NDCG@1": 0.112,
+      "NDCG@3": 0.17607,
+      "NDCG@5": 0.22211,
+      "NDCG@10": 0.26601,
+      "NDCG@100": 0.33723,
+      "NDCG@1000": 0.35654
+    },
+    "MAP": {
+      "MAP@1": 0.112,
+      "MAP@3": 0.159,
+      "MAP@5": 0.1845,
+      "MAP@10": 0.20334,
+      "MAP@100": 0.21687,
+      "MAP@1000": 0.21755
+    },
+    "Recall": {
+      "Recall@1": 0.112,
+      "Recall@3": 0.226,
+      "Recall@5": 0.338,
+      "Recall@10": 0.47,
+      "Recall@100": 0.814,
+      "Recall@1000": 0.968
+    },
+    "Precision": {
+      "P@1": 0.112,
+      "P@3": 0.07533,
+      "P@5": 0.0676,
+      "P@10": 0.047,
+      "P@100": 0.00814,
+      "P@1000": 0.00097
+    }
+  }
+}
