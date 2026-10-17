@@ -16,6 +16,12 @@ dependencies = [
     "httpx",
 ]
 
+[project.optional-dependencies]
+eval = [
+    "coir-eval",
+    "numpy",
+]
+
 [project.scripts]
 senior-code-mcp = "senior_code_mcp.server:main"
 senior-code-ingest = "senior_code_mcp.cli:main"
