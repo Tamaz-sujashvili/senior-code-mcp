@@ -3,7 +3,8 @@
 Usage:
     senior-code-ingest <path>
 
-Runs the full ingest pipeline on `path`: parse (tree-sitter) -> chunk ->
+Runs the full ingest pipeline on `path`: parse (Python ast; tree-sitter
+for JS / TS / Go / Rust / Java) -> chunk ->
 embed + upsert to Qdrant -> build + persist graph.
 """
 
@@ -17,7 +18,7 @@ from . import pipeline
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="senior-code-ingest")
-    parser.add_argument("path", help="Path to the repo (or .py file) to ingest")
+    parser.add_argument("path", help="Path to the repo (or one source file) to ingest")
     parser.add_argument(
         "--reset",
         action="store_true",

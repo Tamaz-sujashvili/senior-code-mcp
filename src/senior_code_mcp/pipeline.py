@@ -6,6 +6,7 @@ parse -> chunk -> embed + upsert to Qdrant -> build + save graph.
 from __future__ import annotations
 
 import os
+from collections import Counter
 from pathlib import Path
 
 from .ingest.chunker import chunk_repo
@@ -52,6 +53,7 @@ def ingest_repo(path: str, reset: bool = False) -> dict:
         "reset": reset,
         "symbols": len(symbols),
         "chunks": len(chunks),
+        "chunks_by_language": dict(Counter(c.language for c in chunks)),
         "collection": vectors.QDRANT_COLLECTION,
         "vector_size": vectors.vector_size(),
         "vector_count": vectors.count_vectors(),

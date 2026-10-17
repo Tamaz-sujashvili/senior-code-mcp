@@ -5,7 +5,8 @@ definition (function / class / method). Imports and calls are NOT chunked
 -- they exist only to build graph edges.
 
 Each chunk carries the metadata the store and the agent will need later:
-id, file path, symbol name, kind, line range, source text, docstring.
+id, file path, symbol name, kind, line range, source text, docstring,
+language.
 """
 
 from __future__ import annotations
@@ -21,11 +22,12 @@ class Chunk:
     id: str
     path: str
     name: str
-    kind: str  # function | class | method
+    kind: str  # function | class | method | interface | struct | enum | trait | type
     start_line: int
     end_line: int
     text: str
     docstring: str | None
+    language: str = "python"
 
     def to_dict(self) -> dict:
         return {
@@ -37,6 +39,7 @@ class Chunk:
             "end_line": self.end_line,
             "text": self.text,
             "docstring": self.docstring,
+            "language": self.language,
         }
 
 
@@ -52,6 +55,7 @@ def chunk_symbol(sym: Symbol) -> Chunk:
         end_line=sym.end_line,
         text=sym.source,
         docstring=sym.docstring,
+        language=sym.language,
     )
 
 

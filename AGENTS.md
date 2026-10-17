@@ -18,7 +18,7 @@ If any check fails, stop, report which, and wait — do not guess fixes.
 Get explicit answers to all three. No defaults assumed except where stated.
 
 1. **Code perimeter.** "Is your code allowed to leave this machine?" Default = **fully local** (Ollama `nomic-embed-text`). A cloud embedding API (OpenAI/Voyage/etc.) sends code outside the perimeter — requires **explicit written approval** from the org. Without it, stay local. Record the answer.
-2. **Which repos to index.** Get the repo paths. Confirm each exists and is readable. Python files only in this version.
+2. **Which repos to index.** Get the repo paths. Confirm each exists and is readable. Supported: Python, JavaScript, TypeScript/TSX, Go, Rust, Java. Other files are skipped.
 3. **Re-index cadence.** On-demand only, nightly, or on git hook. Default = on-demand. Re-ingesting appends (chunks carry deterministic IDs); resetting a collection is a separate destructive action — see guardrails.
 
 Do not proceed until all three answered.

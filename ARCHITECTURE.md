@@ -22,7 +22,7 @@ All statements come from the source code in `src/` and `eval/`.
 
 ## 1. System overview
 
-Senior Code MCP gives a coding agent two retrieval methods over Python repositories:
+Senior Code MCP gives a coding agent two retrieval methods over Python, JavaScript, TypeScript/TSX, Go, Rust and Java repositories:
 
 - **Semantic retrieval.** The server embeds each function, class and method with Ollama. Qdrant stores the vectors.
 - **Structural retrieval.** The server builds a directed graph of call edges and import edges with NetworkX. A JSON file stores the graph.
@@ -150,9 +150,9 @@ The modules do not have cycles. `parser.py` has no internal dependencies. It use
 
 | Tool | Parameters | Returns | Reads | Writes |
 | --- | --- | --- | --- | --- |
-| `search_similar_code` | `query: str`, `top_k: int = 5` | List of hits: `score`, `id`, `repo`, `path`, `name`, `kind`, `start_line`, `end_line`, `docstring`, `text` | Ollama, Qdrant | Nothing |
+| `search_similar_code` | `query: str`, `top_k: int = 5`, `language: str \| None = None` | List of hits: `score`, `id`, `repo`, `path`, `name`, `kind`, `language`, `start_line`, `end_line`, `docstring`, `text` | Ollama, Qdrant | Nothing |
 | `search_related_code` | `names: list[str]`, `hops: int = 1` | List of nodes: `node`, `name`, `kind`, `path`, `start_line`, `end_line`, `hops`. Start nodes have `hops = 0`. | `graph.json` | Nothing |
-| `search_context` | `query: str`, `top_k: int = 5`, `hops: int = 1` | `query`, `seed_names`, `similar_chunks`, `related_symbols` | Ollama, Qdrant, `graph.json` | Nothing |
+| `search_context` | `query: str`, `top_k: int = 5`, `hops: int = 1`, `language: str \| None = None` | `query`, `seed_names`, `similar_chunks`, `related_symbols` | Ollama, Qdrant, `graph.json` | Nothing |
 | `ingest_repo` | `path: str`, `reset: bool = False` | Ingest summary (refer to 3.2) | File system, Ollama | Qdrant, `graph.json` |
 | `store_stats` | None | `collection`, `vector_count`, `graph_path`, `graph_nodes`, `graph_edges` | Qdrant, `graph.json` | Nothing |
 | `doctor` | None | `healthy` and one entry for each check | Qdrant, Ollama, `graph.json` | Nothing |
@@ -186,25 +186,33 @@ The function returns a summary with these keys: `path`, `repo`, `reset`, `symbol
 
 `cli.py` parses `path` and the optional `--reset` flag with `argparse`. It calls `pipeline.ingest_repo` and prints the summary as indented JSON.
 
-### 3.4 `ingest/parser.py`
+### 3.4 `ingest/parser.py`, `ingest/languages.py`, `ingest/treesitter.py`
 
-The parser uses the standard library `ast` module. It walks the syntax tree and emits a flat list of `Symbol` objects.
+`languages.py` holds one `LanguageSpec` for each language. A spec gives the file extensions, the grammar package and the node types for definitions, scopes, calls and imports. `detect_language` finds the spec from the file extension.
+
+`parser.parse_file` selects the parser from the spec:
+
+- Python: the standard library `ast` module (`_visit`).
+- JavaScript, TypeScript, TSX, Go, Rust, Java: tree-sitter (`treesitter.parse_source`).
+
+Both parsers emit a flat list of `Symbol` objects with the same fields.
 
 **`Symbol` fields:**
 
 | Field | Kinds | Content |
 | --- | --- | --- |
 | `name` | all | Definition name, callee text or module name |
-| `kind` | all | `function`, `class`, `method`, `import` or `call` |
+| `kind` | all | `function`, `class`, `method`, `interface`, `struct`, `enum`, `trait`, `type`, `import` or `call` |
 | `path` | all | File path relative to the repository root |
 | `start_line`, `end_line` | all | 1-based line range |
 | `source` | all | Source text of the line range |
-| `docstring` | definitions | Value of `ast.get_docstring` |
+| `docstring` | definitions | Python: value of `ast.get_docstring`. Other languages: the comments directly above the definition, without comment markers |
 | `qualified` | definitions | Dotted name, for example `Class.method` or `outer.inner` |
 | `enclosing` | calls | Qualified name of the enclosing definition, or `None` at module level |
 | `callee` | calls | Text of the called expression from `ast.unparse`, for example `obj.method` |
 | `module` | imports | Module of `from x import y`, or `None` for `import x` |
-| `imported` | imports | Names that the statement imports |
+| `imported` | imports | Names that the statement imports (Python only) |
+| `language` | all | `python`, `javascript`, `typescript`, `tsx`, `go`, `rust` or `java` |
 
 **Walk rules (`_visit`):**
 
@@ -214,13 +222,23 @@ The parser uses the standard library `ast` module. It walks the syntax tree and 
 - An `Import` or an `ImportFrom` becomes an `import` symbol.
 - A `Call` becomes a `call` symbol. The walker also visits the arguments of the call, so nested calls also become symbols.
 
+**Tree-sitter walk rules (`treesitter.parse_source`):**
+
+- The walk uses an explicit stack, not recursion.
+- A function inside a class, interface, struct, trait, enum or Rust `impl` block becomes a `method`.
+- A Rust `impl X` block and a `mod x` block add `X` or `x` to the qualified name. A Go method gets the receiver type as prefix, for example `MemoryRepo.Find`.
+- JavaScript and TypeScript: `const f = () => ...` and `const f = function () {...}` become functions. `require("x")` becomes an import.
+- The doc comment is the block of comments directly above the definition, or above its `export` statement. Rust attributes (`#[...]`) between the comment and the definition are allowed.
+- A callee text longer than 120 characters is not recorded. A Rust macro call is recorded as `name!`.
+
 **File walk rules (`parse_repo`):**
 
 - The parser reads files with UTF-8 and replaces bytes that it cannot decode.
 - If a file has a `SyntaxError`, the parser skips that file and returns no symbols for it.
-- The parser skips these directory names: `.git`, `.hg`, `.svn`, `__pycache__`, `.venv`, `venv`, `env`, `.env`, `node_modules`, `.mypy_cache`, `.pytest_cache`, `.ruff_cache`, `dist`, `build`, `.eggs`, `.tox`, `site-packages`.
-- The parser also skips each path component that starts with a dot.
-- If `path` is one `.py` file, the parser reads only that file.
+- The parser skips these directory names: `.git`, `.hg`, `.svn`, `__pycache__`, `.venv`, `venv`, `env`, `.env`, `node_modules`, `.mypy_cache`, `.pytest_cache`, `.ruff_cache`, `dist`, `build`, `.eggs`, `.tox`, `site-packages`, `target`, `vendor`.
+- The parser also skips each directory below the repository root that starts with a dot.
+- The parser skips `*.min.*` files and files larger than 1 MB (`MAX_FILE_BYTES`).
+- If `path` is one source file, the parser reads only that file.
 
 ### 3.5 `ingest/chunker.py`
 
@@ -233,6 +251,7 @@ The chunker keeps only definition symbols. Imports and calls do not become chunk
 | `start_line`, `end_line` | Copied from the symbol |
 | `text` | The full source of the definition |
 | `docstring` | Copied from the symbol |
+| `language` | Copied from the symbol |
 
 A class chunk contains the full class body, which includes its methods. Each method is also a separate chunk.
 
@@ -455,7 +474,7 @@ All modules read the environment variables one time, when Python imports the mod
 | `EMBED_MODEL` | `nomic-embed-text` | `vectors.py` | Embedding model |
 | `GRAPH_PATH` | `<project root>/graph.json` | `pipeline.py` | Graph file location |
 
-Runtime dependencies (`pyproject.toml`): `mcp`, `qdrant-client`, `networkx`, `httpx`, `tree-sitter`, `tree-sitter-python`. Python 3.13 or later is necessary.
+Runtime dependencies (`pyproject.toml`): `mcp`, `qdrant-client`, `networkx`, `httpx`, `tree-sitter` (`>=0.25.2,<0.26`), and the grammars `tree-sitter-python`, `tree-sitter-javascript`, `tree-sitter-typescript`, `tree-sitter-go`, `tree-sitter-rust`, `tree-sitter-java`. Python 3.13 or later is necessary.
 
 The `eval` extra adds `coir-eval` and `numpy`.
 
@@ -530,7 +549,7 @@ This script runs CoIR tasks with the same Ollama embedding function.
 
 | Decision | Reason | Cost |
 | --- | --- | --- |
-| Standard library `ast` in place of tree-sitter | The tree-sitter 0.26 node binding caused random segmentation faults on CPython 3.13/3.14 on macOS arm64 (refer to the docstring of `parser.py`). | Python only. The tree-sitter packages stay in the dependencies but the code does not use them. |
+| Standard library `ast` for Python, tree-sitter for other languages | `ast` gives docstrings and exact structure for Python. Tree-sitter 0.26.0 caused segmentation faults on node access on CPython 3.13 on macOS arm64; 0.25.2 does not. | `tree-sitter` is pinned to `>=0.25.2,<0.26`. Two parsers to maintain. |
 | One chunk for each definition | An agent can reuse a full function. A symbol chunk has fewer tokens than a full file. | The index does not contain module-level code outside definitions. |
 | Deterministic point IDs | A second ingest replaces points. It does not add copies. | A moved function gets a new ID. The old point stays until a reset. |
 | Graph in a JSON file | No graph database is necessary. A person can read the file. | The server loads the full file for each graph call. |
@@ -557,10 +576,9 @@ These points come from the code. We did not measure them.
 | --- | --- | --- |
 | Each ingest replaces `graph.json`. The graph holds only the last repository. Qdrant holds all repositories. | `pipeline.ingest_repo` | Merge the new graph into the stored graph, or keep one graph file for each repository. |
 | Vector search has no repository filter. | `vectors.search_similar` | Add a `repo` parameter and a Qdrant payload filter. |
-| Call edges use the last name segment and the first match. | `graph.build_graph` | Resolve callees through imports and the qualified names, or use a language server. |
+| Call edges use the last name segment. The match is limited to the language family of the caller and prefers the same file. | `graph.build_graph` | Resolve callees through imports and the qualified names, or use a language server. |
 | `ingest_repo` exposes `reset=True` to the agent. A reset deletes all repositories. | `server.ingest_repo` | Remove `reset` from the MCP tool. Keep it only in the CLI. |
-| The skip rule checks all components of the absolute path. If the repository is inside a directory that starts with a dot, the parser skips all files. | `parser.parse_repo` | Check only the path components below the repository root. |
 | No incremental ingest. Each ingest embeds all chunks again. | `pipeline.ingest_repo` | Embed only chunks with a changed content hash. Delete points of removed files. |
-| Python only. | `ingest/parser.py` | Add a parser for each language that emits the same `Symbol` shape. |
+| Seven languages only. | `ingest/languages.py` | Add a grammar package and one `LanguageSpec` entry for each new language. |
 | The CoIR wrapper uses prefixes. The live tools do not. | `eval/coir_bench.py`, `vectors.embed_texts` | Add the same prefixes to the live path, then run the CoIR task again. |
 | The Docker images use the tag `latest`. | `docker-compose.yml` | Pin the image versions. |

@@ -23,6 +23,9 @@ import httpx
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Distance,
+    FieldCondition,
+    Filter,
+    MatchValue,
     PointStruct,
     VectorParams,
 )
@@ -124,6 +127,7 @@ def upsert_chunks(chunks: list[Chunk], repo: str | None = None) -> None:
                 "end_line": c.end_line,
                 "text": c.text,
                 "docstring": c.docstring,
+                "language": c.language,
             },
         )
         for i, c in enumerate(chunks)
@@ -144,8 +148,12 @@ def _truncate(text: str | None, max_lines: int = 80, max_chars: int = 2000) -> s
     return truncated
 
 
-def search_similar(query: str, top_k: int = 5) -> list[dict[str, Any]]:
+def search_similar(query: str, top_k: int = 5, language: str | None = None) -> list[dict[str, Any]]:
     """Embed `query` and return the top-k matching chunks with scores.
+
+    `language` (e.g. "python", "typescript", "go") restricts hits to chunks
+    of that language. Chunks ingested before language tagging carry no
+    `language` field and only match when `language` is None.
 
     Chunk `text` is truncated (first 80 lines / 2000 chars) to keep responses
     small; the full text stays in the stored payload.
@@ -157,6 +165,11 @@ def search_similar(query: str, top_k: int = 5) -> list[dict[str, Any]]:
         collection_name=QDRANT_COLLECTION,
         query=qvec,
         limit=top_k,
+        query_filter=(
+            Filter(must=[FieldCondition(key="language", match=MatchValue(value=language))])
+            if language
+            else None
+        ),
         with_payload=True,
     )
     hits = resp.points
@@ -171,6 +184,7 @@ def search_similar(query: str, top_k: int = 5) -> list[dict[str, Any]]:
                 "path": payload.get("path"),
                 "name": payload.get("name"),
                 "kind": payload.get("kind"),
+                "language": payload.get("language"),
                 "start_line": payload.get("start_line"),
                 "end_line": payload.get("end_line"),
                 "docstring": payload.get("docstring"),

@@ -21,21 +21,21 @@ Senior Code MCP runs both lenses on symbol-level chunks produced by a real AST p
 | --- | --- | --- | --- |
 | Semantic vector search | yes | yes | yes |
 | Call/import graph expansion | yes | no | yes |
-| Chunk granularity | AST symbols (Python `ast`) | raw text windows | AST symbols (Tree-sitter, many languages) |
+| Chunk granularity | AST symbols (Python `ast`, tree-sitter for other languages) | raw text windows | AST symbols (Tree-sitter, many languages) |
 | Default deployment | local; code stays on the machine | depends on config | local |
-| Language coverage | Python | language-agnostic | 10+ languages |
+| Language coverage | Python, JavaScript, TypeScript/TSX, Go, Rust, Java | language-agnostic | 10+ languages |
 
 The tradeoff is deliberate. The tools on the right do more; this one does less, in a slice small enough to read, run, and reason about in an evening. What that focus buys is a retrieval step that returns not just "here is similar code" but "here is similar code, and everything that calls it, imports it, or shares its shape" — the context an agent needs to reuse a proven implementation instead of writing a parallel one.
 
 ## How it works
 
 ```
-repo -> parse (Python stdlib ast) -> symbol chunks
+repo -> parse (Python: stdlib ast; JS/TS/Go/Rust/Java: tree-sitter) -> symbol chunks
       -> embed (Ollama nomic-embed-text, 768d) -> Qdrant
       -> call/import edges -> NetworkX graph (graph.json)
 ```
 
-Ingestion walks a repo, extracts functions/classes/methods with the Python `ast` module, embeds each symbol's source, upserts into Qdrant, and builds a directed graph of call and import relationships. Multiple repos coexist in one collection, each chunk tagged with its repo name.
+Ingestion walks a repo, extracts functions/classes/methods (plus interfaces, structs, enums, traits and type aliases) with the Python `ast` module or tree-sitter, embeds each symbol's source, upserts into Qdrant, and builds a directed graph of call and import relationships. Multiple repos coexist in one collection, each chunk tagged with its repo name.
 
 ## Architecture
 
@@ -48,8 +48,10 @@ src/senior_code_mcp/
 ├── cli.py               # senior-code-ingest entry point (--reset flag)
 ├── pipeline.py          # Shared ingest: parse → chunk → embed + upsert → graph
 ├── ingest/              # Code analysis
-│   ├── parser.py        # stdlib ast walk → Symbol (definitions, imports, calls)
-│   └── chunker.py       # One Chunk per function / class / method
+│   ├── languages.py     # Language registry: extensions, grammars, node types
+│   ├── parser.py        # stdlib ast walk (Python) + dispatch by extension → Symbol
+│   ├── treesitter.py    # tree-sitter walk for JS / TS / TSX / Go / Rust / Java
+│   └── chunker.py       # One Chunk per definition
 └── store/               # Persistence
     ├── vectors.py       # Ollama embed client + Qdrant collection, search
     └── graph.py         # NetworkX DiGraph: call + import edges, BFS expand
@@ -69,9 +71,9 @@ docker-compose.yml       # Qdrant + Ollama services
 
 `ingest_repo` (MCP tool) and `senior-code-ingest` (CLI) call the same function, `pipeline.ingest_repo`.
 
-1. `parser.parse_repo` reads each `.py` file. It skips hidden, virtual-environment and build directories.
+1. `parser.parse_repo` reads each file with a supported extension (`.py`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.mts`, `.cts`, `.tsx`, `.go`, `.rs`, `.java`). It skips hidden, virtual-environment, build and vendor directories, `*.min.*` files and files larger than 1 MB.
 2. The parser emits one `Symbol` for each definition, import and call. A call symbol records its enclosing definition.
-3. `chunker.chunk_repo` keeps only the definitions. Each chunk holds the source text, the line range and the docstring.
+3. `chunker.chunk_repo` keeps only the definitions. Each chunk holds the source text, the line range, the docstring (or the doc comment above the definition) and the language.
 4. `vectors.upsert_chunks` sends the chunk text to Ollama in batches of 32. Then it writes the vectors to Qdrant.
 5. `graph.build_graph` makes the call and import edges. `save_graph` writes them to `graph.json`.
 
@@ -137,7 +139,7 @@ uv run --extra eval python eval/coir_bench.py --task cosqa   # official CoIR num
 
 | Tool | What it does |
 | --- | --- |
-| `search_similar_code` | Embeds a natural-language or code query, returns top-k matching symbols (path, lines, docstring, truncated source, score). |
+| `search_similar_code` | Embeds a natural-language or code query, returns top-k matching symbols (path, lines, language, docstring, truncated source, score). Optional `language` filter. |
 | `search_related_code` | Given symbol names, expands N hops through the call/import graph and returns connected symbols. |
 | `search_context` | One call, two-stage retrieval: vector search for the query, then graph expansion on the top hits' symbol names. Returns one combined result (`similar_chunks` + `related_symbols`). |
 | `ingest_repo` | Runs the full pipeline on a local repo path (parse, embed, upsert, build graph). |
@@ -152,7 +154,7 @@ Typical agent flow: `doctor` first to confirm the store is healthy, then `search
 - **Three commands to a working index.** `docker run qdrant`, `ollama pull nomic-embed-text`, `senior-code-ingest /your/repo`. No cluster, no accounts, no billing.
 - **Self-onboarding agent.** `AGENTS.md` is a runbook an AI coding agent auto-reads on repo open: it calls `doctor`, asks the org the three questions that actually need a human (code perimeter, which repos, re-index cadence), respects hard guardrails (never reset a collection, never send code externally without approval, secrets in env), then ingests + registers + verifies on its own.
 - **Drops into existing agent stacks.** Std MCP over stdio — Cursor, Claude Code, any MCP client. One entry in `mcp.json`.
-- **No vendor lock-in.** Open Python, stdlib `ast`, Qdrant, NetworkX. Read every file in an evening.
+- **No vendor lock-in.** Open Python, stdlib `ast`, tree-sitter, Qdrant, NetworkX. Read every file in an evening.
 
 ## Quick start (~5 min)
 
@@ -160,7 +162,7 @@ Typical agent flow: `doctor` first to confirm the store is healthy, then `search
 docker run -d --name qdrant -p 6333:6333 -p 6334:6334 qdrant/qdrant
 ollama pull nomic-embed-text
 uv sync
-senior-code-ingest /path/to/any/python/repo
+senior-code-ingest /path/to/any/repo
 ```
 
 Alternative: `docker compose up` brings up Qdrant + Ollama together — on macOS, native Ollama is preferred (faster, uses Metal GPU) over the container.
@@ -192,12 +194,14 @@ Restart Cursor, then ask it to "call `doctor`", "call `store_stats`", and "searc
 
 ## Honest limitations
 
-- Python files only (stdlib `ast`; tree-sitter multi-language is the planned upgrade).
+- Seven languages: Python (stdlib `ast`), JavaScript, TypeScript, TSX, Go, Rust, Java (tree-sitter). Other files are skipped. `tree-sitter` is pinned below 0.26 because 0.26.0 segfaults on node access (CPython 3.13, macOS arm64).
 - Fully local: no hosted embeddings, no cloud vector DB.
 - Single shared collection; multi-tenant separation is future work.
 - No incremental ingest yet — re-running re-embeds the repo (idempotent via deterministic IDs, but not free).
 - Each ingest rewrites `graph.json` from the current repo only. Qdrant keeps all repos, but the graph holds only the last repo ingested.
-- Call edges resolve by the last name segment, first match. Two definitions with the same name can get the wrong edge.
+- Call edges resolve by the last name segment, within the caller's language family (JS/TS/TSX are one family). An explicit receiver that names a class (`B.save`, `Foo::new`, `this.save`) wins, then a definition in the same file. A receiver held in a variable (`other.save()`) has no type information, so it can link to the wrong `save`.
+- `.gitignore` is applied through `git ls-files`. Outside a git work tree, or without `git` on `PATH`, only the fixed skip list applies.
+- The `language` filter on `search_context` limits the vector hits and the graph seeds. Graph neighbours can be in another language of the same family (a TS function that calls a JS helper).
 
 ---
 

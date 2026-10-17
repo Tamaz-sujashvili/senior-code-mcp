@@ -2,7 +2,7 @@
 
 Exposes six tools to a coding agent over the MCP protocol:
 
-- `search_similar_code(query, top_k)` -> semantic search via Qdrant.
+- `search_similar_code(query, top_k, language)` -> semantic search via Qdrant.
   Returns vector hits with full payload + cosine score.
 - `search_related_code(names, hops)` -> structural graph expansion.
   Loads the persisted graph and returns neighbor nodes within `hops`.
@@ -19,32 +19,34 @@ from mcp.server.fastmcp import FastMCP
 
 from . import pipeline
 from .store import vectors
-from .store.graph import expand, load_graph
+from .store.graph import expand, expand_hits, load_graph
 
 mcp = FastMCP("senior-code-mcp")
 
 
 @mcp.tool()
-def search_similar_code(query: str, top_k: int = 5) -> list[dict]:
+def search_similar_code(query: str, top_k: int = 5, language: str | None = None) -> list[dict]:
     """Semantic search: embed `query`, return top-k matching code chunks.
 
-    Each result carries score + payload (path, name, kind, line range,
-    docstring, text).
+    Optional `language` filter: python, javascript, typescript, tsx, go,
+    rust, java. Each result carries score + payload (path, name, kind,
+    language, line range, docstring, text).
     """
-    return vectors.search_similar(query, top_k=top_k)
+    return vectors.search_similar(query, top_k=top_k, language=language)
 
 
 @mcp.tool()
-def search_related_code(names: list[str], hops: int = 1) -> list[dict]:
+def search_related_code(names: list[str], hops: int = 1, language: str | None = None) -> list[dict]:
     """Structural search: expand the graph from `names` up to `hops` away.
 
+    Optional `language` restricts which symbols the names resolve to.
     Returns neighbor nodes (callers/callees/imports) with hop distance.
     Requires the repo to have been ingested (graph.json present).
     """
     if not pipeline.GRAPH_PATH.exists():
         return [{"error": f"graph not found at {pipeline.GRAPH_PATH}; run ingest_repo first"}]
     g = load_graph(pipeline.GRAPH_PATH)
-    return expand(g, names, hops=hops)
+    return expand(g, names, hops=hops, language=language)
 
 
 @mcp.tool()
@@ -170,21 +172,24 @@ def doctor() -> dict:
 
 
 @mcp.tool()
-def search_context(query: str, top_k: int = 5, hops: int = 1) -> dict:
+def search_context(query: str, top_k: int = 5, hops: int = 1, language: str | None = None) -> dict:
     """Two-stage retrieval in one call: semantic search + graph expansion.
 
     Runs vector search for `query` (top-k), takes the symbol names from those
     hits, expands the graph one hop from them, and returns a combined result:
     `similar_chunks` (the vector hits) plus `related_symbols` (graph neighbors).
+    Optional `language` filters the vector stage (see `search_similar_code`).
     """
-    similar = vectors.search_similar(query, top_k=top_k)
+    similar = vectors.search_similar(query, top_k=top_k, language=language)
     seed_names = list({s["name"] for s in similar if s.get("name")})
 
     related: list[dict] = []
     if seed_names and pipeline.GRAPH_PATH.exists():
         g = load_graph(pipeline.GRAPH_PATH)
-        # expand returns seeds (hop 0) + neighbors; keep only the neighbors.
-        related = [r for r in expand(g, seed_names, hops=hops) if r.get("hops", 0) > 0]
+        # Each hit seeds only its own file + language, so a Go hit named
+        # `same` never expands a JavaScript `same`. The result holds seeds
+        # (hop 0) + neighbors; keep only the neighbors.
+        related = [r for r in expand_hits(g, similar, hops=hops) if r.get("hops", 0) > 0]
 
     return {
         "query": query,
