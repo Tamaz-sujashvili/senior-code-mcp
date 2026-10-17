@@ -101,38 +101,50 @@ def ensure_collection() -> None:
     )
 
 
+# Chunks embedded and upserted per request. Bounds request size and memory:
+# one batch of 768-d vectors is a few MB of JSON, so a 40k-chunk repo never
+# builds one huge upsert.
+UPSERT_BATCH = int(os.getenv("UPSERT_BATCH", "256"))
+
+
 def upsert_chunks(chunks: list[Chunk], repo: str | None = None) -> None:
-    """Embed + upsert a list of Chunks into Qdrant, metadata as payload.
+    """Embed + upsert Chunks into Qdrant in batches, metadata as payload.
 
     `repo` is stored on every point so search results show which repo a
-    chunk came from.
+    chunk came from. Each batch of `UPSERT_BATCH` chunks is embedded and
+    upserted before the next one starts. An interrupted ingest keeps the
+    batches already written while graph.json still holds the previous graph;
+    re-run the ingest (point ids are deterministic, so it replaces them).
     """
+    if UPSERT_BATCH < 1:
+        raise ValueError(f"UPSERT_BATCH must be a positive integer, got {UPSERT_BATCH}")
     if not chunks:
         return
     ensure_collection()
-    texts = [c.text for c in chunks]
-    vectors = embed_texts(texts)
     client = _client()
-    points = [
-        PointStruct(
-            id=_point_id(c.id),
-            vector=vectors[i],
-            payload={
-                "id": c.id,
-                "repo": repo,
-                "path": c.path,
-                "name": c.name,
-                "kind": c.kind,
-                "start_line": c.start_line,
-                "end_line": c.end_line,
-                "text": c.text,
-                "docstring": c.docstring,
-                "language": c.language,
-            },
-        )
-        for i, c in enumerate(chunks)
-    ]
-    client.upsert(collection_name=QDRANT_COLLECTION, points=points)
+    for start in range(0, len(chunks), UPSERT_BATCH):
+        batch = chunks[start : start + UPSERT_BATCH]
+        vectors = embed_texts([c.text for c in batch])
+        points = [
+            PointStruct(
+                id=_point_id(c.id),
+                vector=vectors[i],
+                payload={
+                    "id": c.id,
+                    "repo": repo,
+                    "path": c.path,
+                    "name": c.name,
+                    "kind": c.kind,
+                    "start_line": c.start_line,
+                    "end_line": c.end_line,
+                    "text": c.text,
+                    "docstring": c.docstring,
+                    "language": c.language,
+                },
+            )
+            for i, c in enumerate(batch)
+        ]
+        client.upsert(collection_name=QDRANT_COLLECTION, points=points)
 
 
 def _truncate(text: str | None, max_lines: int = 80, max_chars: int = 2000) -> str | None:

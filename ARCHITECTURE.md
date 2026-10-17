@@ -272,7 +272,7 @@ A class chunk contains the full class body, which includes its methods. Each met
 
 **Upsert (`upsert_chunks`):**
 
-- The function embeds all chunk texts first. Then it sends all points to Qdrant in one `upsert` call.
+- The function embeds and upserts the chunks in batches of `UPSERT_BATCH` (default 256). Each batch is written before the next batch starts.
 - The point ID is `uuid5(NAMESPACE_URL, chunk.id)`. The same chunk always gets the same ID.
 
 **Search (`search_similar`):**
@@ -562,7 +562,7 @@ This script runs CoIR tasks with the same Ollama embedding function.
 
 These points come from the code. We did not measure them.
 
-- **Ingest memory.** `upsert_chunks` keeps all vectors in memory and sends one `upsert` request. Very large repositories can need much memory and a large request.
+- **Ingest memory.** `upsert_chunks` keeps the vectors of one batch in memory and sends one `upsert` request for each batch. An interrupted ingest keeps the batches that it wrote. The graph file is written after all batches, so after an interruption the vectors and the graph can be from different ingests. Run the ingest again.
 - **Ingest time.** Ollama embeds the chunks in sequential batches of 32. Embedding is the slowest step.
 - **Graph load.** `search_related_code`, `search_context`, `store_stats` and `doctor` read and parse `graph.json` on each call. The server has no cache.
 - **Start resolution.** `_resolve_starts` scans all nodes for each name. The cost is linear in the node count.

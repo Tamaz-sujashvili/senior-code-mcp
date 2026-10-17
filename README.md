@@ -190,7 +190,11 @@ Harnesses that run one process for each tool call (for example the DeepSeek Harn
 senior-code-search context --query "retry with backoff" --top-k 5 --hops 1 --language python
 senior-code-search similar --query "parse config file" --top-k 3
 senior-code-search related --name MemoryRepo.find --hops 1
+senior-code-search outline --path src/senior_code_mcp/store/graph.py
+senior-code-search symbol --path src/senior_code_mcp/store/graph.py --name build_graph
 ```
+
+`outline` and `symbol` parse the file at call time and need no index. They accept only paths whose real path is inside the current directory. When several definitions share a name, `symbol` returns the one with the largest span and lists the others in `other_ranges`.
 
 ## Config
 
