@@ -25,14 +25,16 @@ mcp = FastMCP("senior-code-mcp")
 
 
 @mcp.tool()
-def search_similar_code(query: str, top_k: int = 5, language: str | None = None) -> list[dict]:
+def search_similar_code(
+    query: str, top_k: int = 5, language: str | None = None, repo: str | None = None
+) -> list[dict]:
     """Semantic search: embed `query`, return top-k matching code chunks.
 
     Optional `language` filter: python, javascript, typescript, tsx, go,
-    rust, java. Each result carries score + payload (path, name, kind,
+    rust, java. Optional `repo` filter: an ingested repo name. Each result carries score + payload (path, name, kind,
     language, line range, docstring, text).
     """
-    return vectors.search_similar(query, top_k=top_k, language=language)
+    return vectors.search_similar(query, top_k=top_k, language=language, repo=repo)
 
 
 @mcp.tool()
@@ -172,15 +174,17 @@ def doctor() -> dict:
 
 
 @mcp.tool()
-def search_context(query: str, top_k: int = 5, hops: int = 1, language: str | None = None) -> dict:
+def search_context(
+    query: str, top_k: int = 5, hops: int = 1, language: str | None = None, repo: str | None = None
+) -> dict:
     """Two-stage retrieval in one call: semantic search + graph expansion.
 
     Runs vector search for `query` (top-k), takes the symbol names from those
     hits, expands the graph one hop from them, and returns a combined result:
     `similar_chunks` (the vector hits) plus `related_symbols` (graph neighbors).
-    Optional `language` filters the vector stage (see `search_similar_code`).
+    Optional `language` / `repo` filter the vector stage (see `search_similar_code`).
     """
-    similar = vectors.search_similar(query, top_k=top_k, language=language)
+    similar = vectors.search_similar(query, top_k=top_k, language=language, repo=repo)
     seed_names = list({s["name"] for s in similar if s.get("name")})
 
     related: list[dict] = []

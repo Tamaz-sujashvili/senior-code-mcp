@@ -29,3 +29,19 @@ def test_missing_graph_exits_2(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, 
         search_cli.main(["related", "--name", "x"])
     assert exc.value.code == 2
     assert "graph not found" in json.loads(capsys.readouterr().out)["error"]
+
+
+def test_argument_errors_are_json(capsys: pytest.CaptureFixture[str]) -> None:
+    for argv in (["related"], ["context"], ["bogus"], ["similar", "--query", "q", "--top-k", "x"]):
+        with pytest.raises(SystemExit) as exc:
+            search_cli.main(argv)
+        assert exc.value.code == 2, argv
+        assert "senior-code-search" in json.loads(capsys.readouterr().out)["error"], argv
+
+
+def test_payload_filter() -> None:
+    from senior_code_mcp.store.vectors import _payload_filter
+
+    assert _payload_filter(language=None, repo=None) is None
+    f = _payload_filter(language="go", repo="app")
+    assert f is not None and [c.key for c in f.must] == ["language", "repo"]

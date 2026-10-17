@@ -148,11 +148,22 @@ def _truncate(text: str | None, max_lines: int = 80, max_chars: int = 2000) -> s
     return truncated
 
 
-def search_similar(query: str, top_k: int = 5, language: str | None = None) -> list[dict[str, Any]]:
+def _payload_filter(**fields: str | None) -> Filter | None:
+    """Qdrant filter requiring each non-None payload field to equal its value."""
+    must = [FieldCondition(key=k, match=MatchValue(value=v)) for k, v in fields.items() if v]
+    return Filter(must=must) if must else None
+
+
+def search_similar(
+    query: str,
+    top_k: int = 5,
+    language: str | None = None,
+    repo: str | None = None,
+) -> list[dict[str, Any]]:
     """Embed `query` and return the top-k matching chunks with scores.
 
     `language` (e.g. "python", "typescript", "go") restricts hits to chunks
-    of that language. Chunks ingested before language tagging carry no
+    of that language; `repo` restricts them to one ingested repo name. Chunks ingested before language tagging carry no
     `language` field and only match when `language` is None.
 
     Chunk `text` is truncated (first 80 lines / 2000 chars) to keep responses
@@ -165,11 +176,7 @@ def search_similar(query: str, top_k: int = 5, language: str | None = None) -> l
         collection_name=QDRANT_COLLECTION,
         query=qvec,
         limit=top_k,
-        query_filter=(
-            Filter(must=[FieldCondition(key="language", match=MatchValue(value=language))])
-            if language
-            else None
-        ),
+        query_filter=_payload_filter(language=language, repo=repo),
         with_payload=True,
     )
     hits = resp.points
