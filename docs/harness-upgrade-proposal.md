@@ -167,3 +167,42 @@ Do this procedure for each change, one change at a time:
 - No SWE-bench study measures test-log extraction separately from general truncation.
 - No study measures outline-first reads together with a semantic and graph index. The two effects possibly overlap.
 - The Aider repository map is not academically verified.
+
+## 7. Implementation status
+
+| Proposal | Status | Branch in `Tamaz-sujashvili/deepseek-harness` | Switch |
+| --- | --- | --- | --- |
+| Code search (`code_search`, `code_related`) | Done | `feat/code-search` | `DSH_CODE_SEARCH_COMMAND` |
+| 4.1 Syntax check after each edit | Done (`@deepseek-ai/dsh-edit-syntax-guard`) | `feat/p1-syntax-guard-observation-mask` | `DSH_EDIT_SYNTAX_GUARD=1` |
+| 4.2 Mask old tool results by age | Done (`@deepseek-ai/dsh-compaction-observation-mask`) | `feat/p1-syntax-guard-observation-mask` | `DSH_OBSERVATION_MASK=1` |
+| 4.3 Outline and symbol read | Done (`code_outline`, `code_read_symbol`) | `feat/p2-outline-symbol` | `DSH_CODE_SEARCH_COMMAND` |
+| 4.4 Best-of-N patch selection | Not started | - | - |
+| 4.5 to 4.7 | Not started | - | - |
+
+Each branch is stacked on the previous one. All new plugins are off by default.
+
+## 8. Measured results
+
+Model: the default model of the `headless` profile on the DeepSeek API. Each run is one `dsh --profile headless --json` task. A run passes when the test suite passes after the run and no test file changed. Arm A is the stock harness. Arm B enables code search, the syntax guard and observation masking.
+
+### 8.1 Small repository (senior-code-mcp, about 160 chunks)
+
+4 seeded bugs, 2 seeds, 16 runs.
+
+| Arm | Passed | Mean steps | Mean input tokens | Mean cached input tokens | Mean output tokens | Mean time |
+| --- | --- | --- | --- | --- | --- | --- |
+| A | 8 of 8 | 9.5 | 18,767 | 178,688 | 1,971 | 25.7 s |
+| B | 8 of 8 | 9.4 | 18,795 | 171,504 | 1,697 | 26.1 s |
+
+The model called `code_search` in 1 of 8 B runs. No syntax denial and no masking occurred. On this small repository the arms are not different. This agrees with the Augment SWE-bench result that `grep` is sufficient on small repositories.
+
+### 8.2 Large repository (DeepSeek Harness, about 44,000 chunks)
+
+3 seeded bugs, 2 seeds, 12 runs.
+
+| Arm | Passed | Mean steps | Mean input tokens | Mean cached input tokens | Mean output tokens | Mean time |
+| --- | --- | --- | --- | --- | --- | --- |
+| A | 6 of 6 | 13.7 | 23,203 | 398,357 | 3,486 | 47.2 s |
+| B | 6 of 6 | 13.8 | 35,076 | 377,557 | 5,200 | 50.5 s |
+
+The model called a code search tool in 1 of 6 B runs, the syntax guard denied 1 edit, and masking occurred in 1 run. Per-run variance is large: B used fewer steps in 3 of 6 pairs. With 6 pairs, the difference is not significant. The main finding is tool adoption: DeepSeek uses `bash` for search in almost all runs, so the code search tools cannot have an effect until the model calls them. Next step: test a stronger routing method (for example, deny or redirect `bash` grep/rg/find calls to `code_search`) and use more tasks.
