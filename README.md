@@ -39,6 +39,8 @@ Ingestion walks a repo, extracts functions/classes/methods with the Python `ast`
 
 ## Architecture
 
+Full design document: [ARCHITECTURE.md](ARCHITECTURE.md). It has diagrams, module reference, runtime flows, data model, evaluation harness and known limitations. The summary follows.
+
 ```
 src/senior_code_mcp/
 ├── __init__.py          # Package metadata (__version__)
