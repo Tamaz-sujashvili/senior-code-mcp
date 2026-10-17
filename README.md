@@ -182,6 +182,16 @@ Then register in Cursor (`.cursor/mcp.json` in this repo is an example, or add t
 
 Restart Cursor, then ask it to "call `doctor`", "call `store_stats`", and "search similar code for <something>".
 
+## JSON CLI for harnesses
+
+Harnesses that run one process for each tool call (for example the DeepSeek Harness `tool-code-search` plugin) can use `senior-code-search` in place of the MCP server. It prints one JSON document and exits 0. On failure it prints `{"error": "..."}` and exits 2.
+
+```bash
+senior-code-search context --query "retry with backoff" --top-k 5 --hops 1 --language python
+senior-code-search similar --query "parse config file" --top-k 3
+senior-code-search related --name MemoryRepo.find --hops 1
+```
+
 ## Config
 
 | Setting | Default | Env var |
