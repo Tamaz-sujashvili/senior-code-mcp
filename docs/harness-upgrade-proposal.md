@@ -205,7 +205,9 @@ The model called `code_search` in 1 of 8 B runs. No syntax denial and no masking
 | A | 6 of 6 | 13.7 | 23,203 | 398,357 | 3,486 | 47.2 s |
 | B | 6 of 6 | 13.8 | 35,076 | 377,557 | 5,200 | 50.5 s |
 
-The model called a code search tool in 1 of 6 B runs, the syntax guard denied 1 edit, and masking occurred in 1 run. Per-run variance is large: B used fewer steps in 3 of 6 pairs. With 6 pairs, the difference is not significant. The main finding is tool adoption: DeepSeek uses `bash` for search in almost all runs, so the code search tools cannot have an effect until the model calls them. Next step: test a stronger routing method (for example, deny or redirect `bash` grep/rg/find calls to `code_search`) and use more tasks.
+The model called a code search tool in 1 of 6 B runs, the syntax guard denied 1 edit, and masking occurred in 1 run. Per-run variance is large: B used fewer steps in 3 of 6 pairs. With 6 pairs, the difference is not significant.
+
+The main finding is tool adoption: DeepSeek uses `bash` for search in almost all runs, so the code search tools cannot have an effect until the model calls them. Next step: test a stronger routing method (for example, deny or redirect `bash` grep/rg/find calls to `code_search`) and use more tasks.
 
 ### 8.3 Raw harness vs both fork branches
 
