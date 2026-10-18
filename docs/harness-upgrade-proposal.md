@@ -224,12 +224,17 @@ Three arms, same tasks as 8.1 (4 small tasks) and 8.2 (3 large tasks), 2 seeds, 
 | Large | P | 6 of 6 | 13.7 | 27,080 | 392,213 | 3,470 | 43.8 s |
 | Large | H | 6 of 6 | 12.8 | 19,517 | 351,680 | 4,029 | 43.9 s |
 
-Paired against R: on the small suite P and H used fewer total input tokens in 5 and 4 of 8 pairs. On the large suite P and H used more steps in 4 of 6 pairs. No difference is significant at this sample size.
+Paired against R: on the small suite P and H used fewer total input tokens in 5 and 4 of 8 pairs.
+
+On the large suite P and H used more steps in 4 of 6 pairs. No difference is significant at this sample size.
 
 Findings:
 
 1. All arms solve all tasks. These seeded single-file bugs are too easy to show a resolve-rate difference. A useful comparison needs harder tasks (SWE-bench Verified or multi-file bugs) and more runs.
-2. The new plugins rarely act. Each fork arm called a code search tool in 1 of 14 runs; no syntax denial and no masking occurred. The model searches with `bash` in almost every run.
+2. The new plugins rarely act. Each fork arm called a code search tool in 1 of 14 runs. No syntax denial and no masking occurred. The model searches with `bash` in almost every run.
 3. Each fork arm sends more tool schemas and prompt text in each request, so on the large suite it used more tokens without a benefit.
 
-Next steps: (a) route `bash` grep/rg/find to `code_search`, or deny them, and measure again; (b) run a SWE-bench Verified subset with the same three arms.
+Next steps:
+
+- Route `bash` grep/rg/find to `code_search`, or deny them, and measure again.
+- Run a SWE-bench Verified subset with the same three arms.
