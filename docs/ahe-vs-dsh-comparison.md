@@ -112,7 +112,9 @@ The ranking uses expected effect on SWE-bench-style resolve rate first, then tok
 
 ## 5. Live A/B result
 
-Setup: the seeded-bug benchmark from the earlier proposal (`bench.py`, senior-code-mcp repository), DeepSeek through the `headless` profile of the fork. Arm A is the stock harness. Arm B sets `DSH_VERIFY_BEFORE_FINISH=1` and `DSH_EXECUTION_RISK_HINTS=1`. The prompt does not name the test command, so the agent must decide to run tests (hidden-test setting). Task `t4-cli-json` was removed because its seeded bug no longer fails the tests at the current repository head. Four tasks, two seeds, two arms: 16 runs.
+Setup: the seeded-bug benchmark from the earlier proposal (`bench.py`, senior-code-mcp repository), DeepSeek through the `headless` profile of the fork. Arm A is the stock harness. Arm B sets `DSH_VERIFY_BEFORE_FINISH=1` and `DSH_EXECUTION_RISK_HINTS=1`.
+
+The prompt does not name the test command, so the agent must decide to run tests (hidden-test setting). Task `t4-cli-json` was removed because its seeded bug no longer fails the tests at the current repository head. Four tasks, two seeds, two arms: 16 runs.
 
 | Arm | Runs | Resolved | Median steps | Mean total tokens | Median wall time | Gate messages | Risk notes | pytest calls |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
