@@ -240,3 +240,18 @@ Next steps:
 
 - Route `bash` grep/rg/find to `code_search`, or deny them, and measure again.
 - Run a SWE-bench Verified subset with the same three arms.
+
+### 8.4 With search routing
+
+`@deepseek-ai/dsh-search-routing` (branch `feat/search-routing`, also cherry-picked onto `feat/pi-ports` and `feat/ahe-ports`) denies shell commands that only search the repository and names `code_search`, `grep` and `glob` instead. The P and H arms were run again with `DSH_SEARCH_ROUTING=1`, 28 runs. Arm R is the same 14 runs as in 8.3.
+
+| Suite | Arm | Passed | Mean steps | Mean input tokens | Mean cached input tokens | Runs that called a code search tool |
+| --- | --- | --- | --- | --- | --- | --- |
+| Small | R | 8 of 8 | 9.8 | 17,562 | 188,176 | 0 of 8 |
+| Small | P + routing | 8 of 8 | 9.9 | 16,984 | 184,304 | 1 of 8 |
+| Small | H + routing | 8 of 8 | 9.0 | 17,228 | 173,152 | 4 of 8 |
+| Large | R | 6 of 6 | 11.2 | 16,547 | 334,485 | 0 of 6 |
+| Large | P + routing | 6 of 6 | 11.0 | 25,454 | 312,917 | 1 of 6 |
+| Large | H + routing | 6 of 6 | 13.8 | 21,935 | 388,075 | 0 of 6 |
+
+The guard denied shell searches in these runs. After a denial the model used the exact-text `grep` tool, not `code_search`, because the task text gives it words to search for. The results are in the noise range of 8.3. A command that ends in `2>/dev/null` is not routed, because the classifier rejects every redirection.
