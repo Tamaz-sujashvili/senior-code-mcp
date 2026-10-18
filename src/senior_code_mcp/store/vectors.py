@@ -95,10 +95,17 @@ def ensure_collection() -> None:
     client = _client()
     if client.collection_exists(QDRANT_COLLECTION):
         return
-    client.create_collection(
-        collection_name=QDRANT_COLLECTION,
-        vectors_config=VectorParams(size=vector_size(), distance=Distance.COSINE),
-    )
+    try:
+        client.create_collection(
+            collection_name=QDRANT_COLLECTION,
+            vectors_config=VectorParams(size=vector_size(), distance=Distance.COSINE),
+        )
+    except Exception:
+        # Two concurrent ingests can both see "missing" and race to create;
+        # the loser's create fails with a conflict. That is fine once the
+        # collection exists.
+        if not client.collection_exists(QDRANT_COLLECTION):
+            raise
 
 
 # Chunks embedded and upserted per request. Bounds request size and memory:
