@@ -255,3 +255,27 @@ Next steps:
 | Large | H + routing | 6 of 6 | 13.8 | 21,935 | 388,075 | 0 of 6 |
 
 The guard denied shell searches in these runs. After a denial the model used the exact-text `grep` tool, not `code_search`, because the task text gives it words to search for. The results are in the noise range of 8.3. A command that ends in `2>/dev/null` is not routed, because the classifier rejects every redirection.
+
+### 8.5 SWE-bench Verified subset
+
+20 instances of SWE-bench Verified (12 rated "<15 min fix", 8 rated "15 min - 1 hour") from sympy, django, pytest, pylint, requests and flask. One run per instance and arm, 60 runs. The arms are R, P + routing and H + routing from 8.4. Code search indexes were built once for each repository.
+
+The evaluation is local, not the official Docker harness. Each instance runs in a uv virtual environment that the `swebench==4.1.0` specifications define, on macOS arm64. The grade uses the official FAIL_TO_PASS and PASS_TO_PASS tests and log parsers. Before the runs, every instance was checked: with no change it is not resolved, and with the gold patch it is resolved. The scripts and the results are in `eval/harness-bench/`.
+
+| Arm | Resolved | Mean steps | Mean input tokens | Mean cached input tokens | Mean output tokens | Mean time | Runs that called a code search tool |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| R | 20 of 20 | 15.8 | 24,321 | 380,038 | 4,686 | 59 s | 0 |
+| P + routing | 20 of 20 | 16.9 | 32,502 | 387,245 | 5,086 | 58 s | 0 |
+| H + routing | 20 of 20 | 19.1 | 38,238 | 459,232 | 5,434 | 66 s | 3 |
+
+Paired against R, P used fewer total input tokens on 7 of 20 instances and H on 6 of 20. H used more steps on 14 of 20 instances.
+
+The first pass used depth-1 checkouts. A depth-1 checkout of pytest has no git tags, so pytest reports version `0.1.dev` and its `tox.ini` stops every test run. The 12 pytest runs were run again with full history, and only those results are in the table.
+
+Findings:
+
+1. The raw harness resolved all 20 instances. The subset is too easy for this model to show a resolve-rate difference.
+2. The fork arms cost more and gave no benefit on this subset: P used 4% more total input tokens than R, and H used 23% more. `verify-before-finish` in H adds steps, because it asks for a check after the last edit.
+3. The model did not call the code search tools on these repositories, also with search routing.
+
+Recommendation: keep all fork plugins off by default. Before more work on tools, test on harder tasks where the raw harness fails (for example SWE-bench Pro or the "1-4 hours" Verified instances), with at least 3 runs for each instance and arm.

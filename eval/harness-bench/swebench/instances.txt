@@ -1,0 +1,21 @@
+# instance_id  repo  version  difficulty  (12 easy '<15 min fix', 8 medium '15 min - 1 hour')
+sympy__sympy-16766  sympy/sympy  1.5  <15 min fix
+sympy__sympy-16886  sympy/sympy  1.5  <15 min fix
+sympy__sympy-24539  sympy/sympy  1.12  <15 min fix
+sympy__sympy-24562  sympy/sympy  1.12  <15 min fix
+pytest-dev__pytest-7205  pytest-dev/pytest  5.4  <15 min fix
+pytest-dev__pytest-7432  pytest-dev/pytest  5.4  <15 min fix
+pylint-dev__pylint-6903  pylint-dev/pylint  2.15  <15 min fix
+pylint-dev__pylint-7277  pylint-dev/pylint  2.15  <15 min fix
+pallets__flask-5014  pallets/flask  2.3  <15 min fix
+psf__requests-5414  psf/requests  2.26  <15 min fix
+django__django-16429  django/django  4.2  <15 min fix
+django__django-16642  django/django  5.0  <15 min fix
+sympy__sympy-23950  sympy/sympy  1.12  15 min - 1 hour
+sympy__sympy-24213  sympy/sympy  1.12  15 min - 1 hour
+pytest-dev__pytest-7324  pytest-dev/pytest  5.4  15 min - 1 hour
+pytest-dev__pytest-7236  pytest-dev/pytest  5.4  15 min - 1 hour
+pylint-dev__pylint-7080  pylint-dev/pylint  2.15  15 min - 1 hour
+psf__requests-6028  psf/requests  2.27  15 min - 1 hour
+django__django-15814  django/django  4.2  15 min - 1 hour
+django__django-16082  django/django  4.2  15 min - 1 hour
