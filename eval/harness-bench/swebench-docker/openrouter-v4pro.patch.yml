@@ -1,0 +1,12 @@
+# Benchmark overlay: route the default agent model through OpenRouter.
+- id: llm-pi-ai
+  config:
+    providers:
+      openrouter:
+        apiKeyEnv: OPENROUTER_API_KEY
+- id: agent-default-model
+  config:
+    provider: openrouter
+    model: deepseek/deepseek-v4-pro
+- id: session-title-llm
+  disabled: true

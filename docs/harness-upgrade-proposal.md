@@ -177,13 +177,23 @@ Do this procedure for each change, one change at a time:
 | 4.2 Mask old tool results by age | Done (`@deepseek-ai/dsh-compaction-observation-mask`) | `feat/p1-syntax-guard-observation-mask` | `DSH_OBSERVATION_MASK=1` |
 | 4.3 Outline and symbol read | Done (`code_outline`, `code_read_symbol`) | `feat/p2-outline-symbol` | `DSH_CODE_SEARCH_COMMAND` |
 | 4.4 Best-of-N patch selection | Not started | - | - |
-| 4.5 to 4.7 | Not started | - | - |
+| 4.5 Test-log extraction | Not started (low-confidence evidence) | - | - |
+| 4.6 Turn budget | Done (`@deepseek-ai/dsh-step-budget`) | `feat/step-budget`, also on `feat/pi-ports` and `feat/ahe-ports` | `DSH_STEP_BUDGET=<maxSteps>` |
+| 4.7 Deferred tool schemas | Not done: measured saving is too small (see 7.1) | - | - |
+| Search routing (8.4) | Done (`@deepseek-ai/dsh-search-routing`) | `feat/search-routing`, also on `feat/pi-ports` and `feat/ahe-ports` | `DSH_SEARCH_ROUTING=1` |
 
 Each branch is stacked on the previous one. All new plugins are off by default.
 
+### 7.1 Changes in the second upgrade round
+
+- **Step budget (4.6).** The plugin counts the model steps of each agent for one user message. At 50% and 80% of `maxSteps`, and at `maxSteps`, the agent gets one short notice with the steps used and the steps that remain. After 2 grace steps, the turn ends. Evidence: the Budget Tracker (arXiv:2511.17006) gives better cost-performance scaling than a larger budget alone. That study used web search agents. Thus the effect on agents that write code is not known.
+- **Search routing.** The guard now ignores `2>/dev/null` and `2>&1`. Before this change, a search such as `grep -rn foo . 2>/dev/null | head` was not routed.
+- **`feat/ahe-ports` fix.** This branch did not have the syntax-guard fix `625f0c9d` (the guard listeners must run first in the base bundle). Thus the syntax guard in the `ahe-ports` arm of 8.3 to 8.5 possibly did not run. The branch now includes the fix.
+- **Deferred tool schemas (4.7) are not done.** In the 60 runs of 8.5, 92.8% of the input tokens were cache hits (24.5 M of 26.4 M). The system prompt and the tool schemas are approximately 11,000 tokens in each step, and they are in the cached prefix. At the `deepseek-flash` cache-hit price ($0.003 for each 1 M tokens, off-peak), the full prefix costs approximately $0.0005 for each run of 16 steps. Deferred schemas can remove only a part of this cost. A change to the tool list in a run also makes the cache prefix not valid (arXiv:2607.12161).
+
 ## 8. Measured results
 
-Model: the default model of the `headless` profile on the DeepSeek API. Each run is one `dsh --profile headless --json` task. A run passes when the test suite passes after the run and no test file changed. Arm A is the stock harness. Arm B enables code search, the syntax guard and observation masking.
+Model: the default model of the `headless` profile on the DeepSeek API, `deepseek-flash` (provider `deepseek-official`). This model was used for all results in 8.1 to 8.5. Each run is one `dsh --profile headless --json` task. A run passes when the test suite passes after the run and no test file changed. Arm A is the stock harness. Arm B enables code search, the syntax guard and observation masking.
 
 ### 8.1 Small repository (senior-code-mcp, about 160 chunks)
 
@@ -279,3 +289,41 @@ Findings:
 3. The model did not call the code search tools on these repositories, also with search routing.
 
 Recommendation: keep all fork plugins off by default. Before more work on tools, test on harder tasks where the raw harness fails (for example SWE-bench Pro or the "1-4 hours" Verified instances), with at least 3 runs for each instance and arm.
+
+### 8.6 Hard SWE-bench Verified pilot (stopped by the credit limit)
+
+Set-up:
+
+- Instances: the 45 Verified instances rated "1-4 hours" or ">4 hours", in a random order.
+- Arms: R (`687f282e`), P (`feat/pi-ports` `a11b0812`) and H (`feat/ahe-ports` `9a95bc62`). P and H also have search routing and the step budget (`DSH_STEP_BUDGET=100`).
+- Model: `deepseek/deepseek-v4-pro` through OpenRouter. This model is different from 8.1 to 8.5, so the results cannot be compared with them.
+- Grade: the official `swebench==4.1.0` Docker harness on a Linux server. The agent runs on the host and runs tests in the instance image. The scripts are in `eval/harness-bench/swebench-docker/`.
+
+The OpenRouter credit was $4.02 at the start. The script stops new runs when the credit is less than $0.60. It stopped after 8 runs on 3 instances.
+
+| Instance | Arm | Result | Steps | Notes |
+| --- | --- | --- | --- | --- |
+| sympy-14248 | R | No result | 108 | The OpenRouter credit limit stopped the run. |
+| sympy-14248 | P | Not resolved | 102 | Step budget reached (3 notices). |
+| sympy-14248 | H | No result | 94 | The OpenRouter credit limit stopped the run. |
+| sympy-13878 | R | No result | 11 | The OpenRouter credit limit stopped the run. The patch was resolved. |
+| sympy-13878 | P | Not resolved | 102 | Step budget reached (3 notices). |
+| sympy-13878 | H | Resolved | 90 | 2 budget notices. |
+| django-13212 | R | Not resolved | 19 | |
+| django-13212 | P | Not resolved | 20 | |
+
+Findings:
+
+1. No instance has a clean result for all three arms. Thus the pilot does not compare the arms.
+2. On these hard tasks, the model used the fork tools. In the sympy runs, P and H called `code_read_symbol` 9 to 22 times and `code_search` 1 to 5 times. In 8.3 to 8.5, the search tools were almost not used.
+3. P reached the step budget on both sympy instances and did not resolve them. One run is not sufficient to know if the budget caused this result.
+4. The guard denied no shell searches, and the syntax guard rejected no edits.
+
+Cost:
+
+- The 8 runs used $3.68 of credit, approximately $0.46 for each run. The mean run had 68 steps and 2.1 M input tokens (most of them cached).
+- OpenRouter charged approximately 3 times the lowest list price ($0.15 for each run at these token counts). It sends requests to different providers, and their prices and caches are different. The harness does not let a profile set the OpenRouter provider (`openRouterRouting` is withheld in `dsh-llm-pi-ai`).
+- At the same token counts, the DeepSeek API costs approximately $0.18 for each run with `deepseek-v4-pro` off-peak, and $0.35 at peak. With `deepseek-flash`, it costs $0.04.
+- One run of each arm on the 45 instances is 135 runs. These runs cost approximately $62 through OpenRouter, $24 with `deepseek-v4-pro` on the DeepSeek API, or $5 with `deepseek-flash`. These numbers come from 8 runs, and long sympy runs increase them.
+
+Recommendation: continue with the DeepSeek API, which has lower prices and one cache. Run all 45 instances with at least one run for each arm, then add runs for the instances where the arms disagree.
